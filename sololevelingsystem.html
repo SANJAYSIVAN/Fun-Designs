@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holo-Slate Terminal</title>
+    <style>
+        /* --- Basic Setup --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #050510; /* Very dark background for contrast */
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        /* --- THE HOLO-SLATE COMPONENT --- */
+        .holo-slate {
+            width: 240px; /* Wider for standalone demo */
+            height: 340px; /* Taller for standalone demo */
+            background: rgba(10, 15, 30, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.05);
+            position: relative;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            
+            /* The Cyber-Grid Pattern */
+            background-image: 
+                linear-gradient(rgba(0, 210, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 210, 255, 0.05) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* Corner Brackets (The "HUD" Look) */
+        .holo-slate::before, .holo-slate::after {
+            content: '';
+            position: absolute;
+            width: 20px; height: 20px;
+            border: 2px solid #00d2ff;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .holo-slate::before {
+            top: 0; left: 0;
+            border-right: none; border-bottom: none;
+            box-shadow: -2px -2px 8px rgba(0, 210, 255, 0.6);
+            border-top-left-radius: 4px;
+        }
+        .holo-slate::after {
+            bottom: 0; right: 0;
+            border-left: none; border-top: none;
+            box-shadow: 2px 2px 8px rgba(0, 210, 255, 0.6);
+            border-bottom-right-radius: 4px;
+        }
+
+        /* Scanning Laser Line Effect */
+        .scanline-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00d2ff, transparent);
+            opacity: 0.5;
+            animation: scan 4s linear infinite;
+            z-index: 5;
+            pointer-events: none;
+        }
+        
+        @keyframes scan {
+            0% { top: -10%; opacity: 0; }
+            10% { opacity: 0.5; }
+            90% { opacity: 0.5; }
+            100% { top: 110%; opacity: 0; }
+        }
+
+        /* --- Internal Layout --- */
+        .slate-header {
+            background: rgba(0, 210, 255, 0.08);
+            color: #00d2ff;
+            font-size: 10px;
+            padding: 8px 12px;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 2px;
+            border-bottom: 1px solid rgba(0, 210, 255, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slate-content {
+            flex: 1;
+            padding: 20px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            position: relative;
+            z-index: 6;
+        }
+
+        /* Input Styling */
+        .input-group {
+            display: flex; 
+            flex-direction: column; 
+            gap: 6px;
+        }
+
+        .slate-label {
+            font-size: 9px; 
+            color: #88aadd; 
+            text-transform: uppercase; 
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+
+        .slate-input {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #445566;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 6px 0;
+            width: 100%;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        .slate-input::placeholder { 
+            color: #445566; 
+            font-style: italic; 
+        }
+        
+        .slate-input:focus { 
+            border-bottom-color: #00d2ff; 
+            box-shadow: 0 4px 4px -4px rgba(0, 210, 255, 0.3);
+        }
+
+        /* Bottom Status Message */
+        .slate-status {
+            margin-top: auto;
+            text-align: center;
+            font-size: 10px;
+            color: #00d2ff;
+            background: rgba(0, 210, 255, 0.05);
+            padding: 8px;
+            border-radius: 2px;
+            border: 1px solid rgba(0, 210, 255, 0.2);
+            letter-spacing: 1px;
+            animation: pulse-slate 2s infinite ease-in-out;
+        }
+        
+        @keyframes pulse-slate { 
+            0%, 100% { opacity: 0.6; box-shadow: 0 0 5px rgba(0,210,255,0); } 
+            50% { opacity: 1; box-shadow: 0 0 10px rgba(0,210,255,0.2); } 
+        }
+    </style>
+</head>
+<body>
+
+    <div class="holo-slate">
+        <!-- Laser Scanner -->
+        <div class="scanline-bar"></div>
+        
+        <!-- Header -->
+        <div class="slate-header">
+            <span>HOLO_ACCESS</span>
+            <span>v3.1</span>
+        </div>
+        
+        <!-- Content Area -->
+        <div class="slate-content">
+             <div class="input-group">
+                 <div class="slate-label">TARGET REPO</div>
+                 <input type="text" class="slate-input" placeholder="user/repo" value="">
+             </div>
+             
+             <div class="input-group">
+                 <div class="slate-label">SECURE KEY</div>
+                 <input type="password" class="slate-input" placeholder="Optional">
+             </div>
+             
+             <div class="slate-status">
+                 [ INITIALIZE LINK ]
+             </div>
+        </div>
+    </div>
+
+</body>
+</html>
