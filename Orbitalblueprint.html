@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbital Blueprint</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(100, 200, 255, 0.9);
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            pointer-events: none;
+            text-shadow: 0 0 2px #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+    <div id="info">Orbital Blueprint [SCHEMATIC VIEW]</div>
+
+    <script>
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            document.body.innerHTML = '<div style="color:white; padding:20px;">Unable to initialize WebGL.</div>';
+        }
+
+        // Enable derivatives for sharp edge detection if supported
+        const ext = gl.getExtension('OES_standard_derivatives');
+
+        const vsSource = `
+            attribute vec4 aVertexPosition;
+            void main() {
+                gl_Position = aVertexPosition;
+            }
+        `;
+
+        const fsSource = `
+            #extension GL_OES_standard_derivatives : enable
+            precision highp float;
+            uniform vec2 iResolution;
+            uniform float iTime;
+
+            #define FC gl_FragCoord
+            #define r iResolution
+            #define t iTime
+            #define o gl_FragColor
+
+            mat2 rot(float a) {
+                float s = sin(a);
+                float c = cos(a);
+                return mat2(c, s, -s, c);
+            }
+
+            // SDF Primitives
+            float sdCappedCylinder(vec3 p, float h, float r) {
+                vec2 d = abs(vec2(length(p.xz),p.y)) - vec2(r,h);
+                return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+            }
+            
+            float sdTorus(vec3 p, vec2 t) {
+                vec2 q = vec2(length(p.xz) - t.x, p.y);
+                return length(q) - t.y;
+            }
+            
+            float sdBox(vec3 p, vec3 b) {
+                vec3 q = abs(p) - b;
+                return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+            }
+
+            // Scene Map
+            float map(vec3 p) {
+                vec3 q = p;
+                
+                // Rotate the entire station slowly for inspection
+                q.xy *= rot(t * 0.1);
+                q.xz *= rot(t * 0.2);
+                
+                // 1. Central Core
+                float core = sdCappedCylinder(q, 3.0, 0.5);
+                
+                // 2. Habitat Ring
+                float ring = sdTorus(q, vec2(3.0, 0.4));
+                // Add spokes
+                vec3 spokeP = q;
+                float angle = atan(spokeP.z, spokeP.x);
+                float sector = 3.14159 / 2.0; // 4 spokes
+                float a = mod(angle, sector) - sector * 0.5;
+                spokeP.xz = vec2(cos(a), sin(a)) * length(spokeP.xz);
+                float spokes = sdBox(spokeP - vec3(1.5, 0.0, 0.0), vec3(1.5, 0.1, 0.1));
+                
+                float structure = min(core, ring);
+                structure = min(structure, spokes);
+                
+                // 3. Antenna Array (Top)
+                vec3 antP = q - vec3(0.0, 3.0, 0.0);
+                float antenna = sdCappedCylinder(antP, 1.5, 0.05);
+                // Dish
+                float dish = sdTorus(antP - vec3(0.0, 1.0, 0.0), vec2(0.8, 0.05));
+                
+                // 4. Engine Block (Bottom)
+                vec3 engP = q - vec3(0.0, -3.5, 0.0);
+                float engine = sdCappedCylinder(engP, 0.5, 1.2);
+                
+                // Combine all
+                float d = min(structure, antenna);
+                d = min(d, dish);
+                d = min(d, engine);
+                
+                // Cutout View (Cross Section)
+                // Slice the model in half to show "schematic" interior
+                // d = max(d, -q.z); 
+                
+                return d;
+            }
+            
+            // Calculate Normal
+            vec3 calcNormal(vec3 p) {
+                vec2 e = vec2(0.002, 0.0);
+                return normalize(vec3(
+                    map(p + e.xyy) - map(p - e.xyy),
+                    map(p + e.yxy) - map(p - e.yxy),
+                    map(p + e.yyx) - map(p - e.yyx)
+                ));
+            }
+
+            void main() {
+                vec2 uv = (FC.xy * 2.0 - r) / min(r.y, r.x);
+                
+                // Camera: Isometric-ish view
+                vec3 ro = vec3(0.0, 0.0, 10.0); 
+                vec3 rd = normalize(vec3(uv, -2.0)); // Flat field of view
+                
+                // Blueprint Background
+                // Dark Engineering Blue
+                vec3 col = vec3(0.0, 0.1, 0.3);
+                
+                // 2D Grid Background
+                vec2 gridUV = uv * 5.0;
+                float grid = max(step(0.98, fract(gridUV.x)), step(0.98, fract(gridUV.y)));
+                float majorGrid = max(step(0.99, fract(gridUV.x * 0.2)), step(0.99, fract(gridUV.y * 0.2)));
+                col += vec3(0.0, 0.2, 0.4) * grid;
+                col += vec3(0.0, 0.3, 0.6) * majorGrid;
+                
+                float totalDist = 0.0;
+                
+                for(int i = 0; i < 60; i++) {
+                    vec3 p = ro + rd * totalDist;
+                    float d = map(p);
+                    
+                    if(d < 0.005) {
+                        // We hit the object
+                        vec3 n = calcNormal(p);
+                        
+                        // -- BLUEPRINT SHADING --
+                        
+                        // 1. Edge Detection (Wireframe effect)
+                        // Use fwidth if available, else dot product tricks
+                        // Rim light creates edges
+                        float rim = 1.0 - abs(dot(n, -rd));
+                        rim = pow(rim, 3.0);
+                        
+                        // 2. Surface Grid (The schematic lines)
+                        // Project texture based on object rotation (triplanar-ish)
+                        // We use the 'q' rotation from map() mentally here, but p is world pos.
+                        // Let's just use local noise/grid
+                        vec3 q = p;
+                        q.xy *= rot(t * 0.1); // Match rotation manually approx
+                        q.xz *= rot(t * 0.2);
+                        
+                        float objGrid = step(0.95, fract(q.x * 2.0)) + 
+                                      step(0.95, fract(q.y * 2.0)) + 
+                                      step(0.95, fract(q.z * 2.0));
+                        objGrid = clamp(objGrid, 0.0, 1.0);
+                        
+                        // 3. Facing Ratio (X-Ray look)
+                        // Center is transparent, edges are bright
+                        float xray = pow(1.0 - abs(dot(n, -rd)), 2.0);
+                        
+                        // Color Composition
+                        vec3 lineCol = vec3(0.8, 0.9, 1.0); // White lines
+                        vec3 fillCol = vec3(0.0, 0.3, 0.5); // Transparent Blue fill
+                        
+                        vec3 objCol = fillCol * 0.5; // Base semi-transparent fill
+                        objCol += lineCol * xray * 1.5; // Glowing Edges
+                        objCol += lineCol * objGrid * 0.5; // Grid lines on surface
+                        
+                        // Flat lighting to show shape volume slightly
+                        float light = dot(n, normalize(vec3(1.0, 2.0, 1.0))) * 0.5 + 0.5;
+                        objCol *= light;
+
+                        col = mix(col, objCol, 0.8); // 0.8 opacity (Glassy)
+                        
+                        break;
+                    }
+                    
+                    totalDist += d;
+                    if(totalDist > 20.0) break;
+                }
+                
+                // Post Process: Scanlines
+                float scan = sin(uv.y * 800.0 + t * 10.0) * 0.05;
+                col -= scan;
+                
+                // Vignette
+                col *= 1.1 - length(uv) * 0.3;
+                
+                o = vec4(col, 1.0);
+            }
+        `;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const shaderProgram = gl.createProgram();
+        
+        if (vertexShader && fragmentShader) {
+            gl.attachShader(shaderProgram, vertexShader);
+            gl.attachShader(shaderProgram, fragmentShader);
+            gl.linkProgram(shaderProgram);
+
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            }
+
+            const positionAttributeLocation = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
+            const resolutionLocation = gl.getUniformLocation(shaderProgram, 'iResolution');
+            const timeLocation = gl.getUniformLocation(shaderProgram, 'iTime');
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            const positions = [
+                -1.0,  1.0,
+                 1.0,  1.0,
+                -1.0, -1.0,
+                 1.0, -1.0,
+            ];
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+            window.addEventListener('resize', resize);
+            resize();
+
+            function render(time) {
+                time *= 0.001; // convert to seconds
+
+                gl.useProgram(shaderProgram);
+
+                gl.enableVertexAttribArray(positionAttributeLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+                gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+                gl.uniform1f(timeLocation, time);
+
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+                requestAnimationFrame(render);
+            }
+
+            requestAnimationFrame(render);
+        }
+    </script>
+</body>
+</html>
