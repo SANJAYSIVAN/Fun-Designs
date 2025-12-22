@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Epicyclic Engine</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #111;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            color: #00ffaa;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            pointer-events: none;
+            mix-blend-mode: screen;
+            background: rgba(0, 20, 10, 0.8);
+            padding: 5px;
+            border: 1px solid #00ffaa;
+        }
+        .label {
+            font-weight: 700;
+            font-size: 20px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui">
+        <div class="label">Epicyclic Engine</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let time = 0;
+        let path = [];
+        const MAX_PATH = 500;
+        
+        let mouseX = 0;
+        let mouseY = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2;
+            mouseY = height / 2;
+            path = [];
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            // Clear path on interaction for clean drawing
+            // path = [];
+        });
+        
+        // Touch
+        window.addEventListener('touchmove', e => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        resize();
+
+        function draw() {
+            // Fade background
+            ctx.fillStyle = 'rgba(17, 17, 17, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            time += 0.02;
+
+            // Epicycle Configuration
+            // Base on mouse position
+            let numCircles = 5 + Math.floor((mouseX / width) * 10);
+            let speedMod = (mouseY / height) * 2.0;
+
+            let x = width / 2;
+            let y = height / 2;
+
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            
+            // Draw Circles & Arms
+            for (let i = 0; i < numCircles; i++) {
+                let prevX = x;
+                let prevY = y;
+                
+                // Formula: radius * cos(n * time)
+                // Radius decreases with iteration
+                // Frequency increases (odd numbers usually create nice shapes)
+                
+                let radius = 100 * (1.0 / (i + 1));
+                let freq = (i * 2 + 1) * speedMod;
+                
+                x += radius * Math.cos(freq * time);
+                y += radius * Math.sin(freq * time);
+
+                // Draw Circle
+                ctx.beginPath();
+                ctx.arc(prevX, prevY, radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Draw Arm
+                ctx.beginPath();
+                ctx.moveTo(prevX, prevY);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.stroke();
+            }
+
+            // Store path point
+            path.push({x: x, y: y});
+            if (path.length > MAX_PATH) path.shift();
+
+            // Draw Path
+            ctx.beginPath();
+            // Rainbow gradient
+            let hue = (time * 50) % 360;
+            ctx.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < path.length; i++) {
+                if (i === 0) ctx.moveTo(path[i].x, path[i].y);
+                else ctx.lineTo(path[i].x, path[i].y);
+            }
+            ctx.stroke();
+            
+            // Draw Pen Tip
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
