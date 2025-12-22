@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verlet Cloth</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #222;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            pointer-events: none;
+            mix-blend-mode: exclusion;
+            background: rgba(0,0,0,0.5);
+            padding: 5px;
+            border: 1px solid #fff;
+        }
+        .label {
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .sub {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui">
+        <div class="label">Verlet Cloth</div>
+        <div class="sub">Physics Simulation // Tearable Fabric</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        const points = [];
+        const constraints = [];
+
+        const friction = 0.99;
+        const gravity = 0.2;
+        const bounce = 0.9;
+        const spacing = 15;
+        const tearDist = 60; // Distance to tear
+
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseDown = false;
+        let draggedPoint = null;
+
+        class Point {
+            constructor(x, y, pinned) {
+                this.x = x;
+                this.y = y;
+                this.oldx = x;
+                this.oldy = y;
+                this.pinned = pinned;
+            }
+
+            update() {
+                if (this.pinned) return;
+                const vx = (this.x - this.oldx) * friction;
+                const vy = (this.y - this.oldy) * friction;
+                this.oldx = this.x;
+                this.oldy = this.y;
+                this.x += vx;
+                this.y += vy;
+                this.y += gravity;
+            }
+
+            constrain() {
+                if (this.pinned) return;
+                
+                // Bounce off walls (optional, maybe just let it hang)
+                 if (this.x > width) { this.x = width; this.oldx = this.x + (this.x - this.oldx) * bounce; }
+                 if (this.x < 0) { this.x = 0; this.oldx = this.x + (this.x - this.oldx) * bounce; }
+                 if (this.y > height) { this.y = height; this.oldy = this.y + (this.y - this.oldy) * bounce; }
+                 if (this.y < 0) { this.y = 0; this.oldy = this.y + (this.y - this.oldy) * bounce; }
+                 
+                 // Mouse Interaction (Tear/Drag)
+                 if (isMouseDown) {
+                     const dx = this.x - mouseX;
+                     const dy = this.y - mouseY;
+                     const dist = Math.sqrt(dx*dx + dy*dy);
+                     if (dist < 20) {
+                         // Drag logic could go here, or tear logic
+                         // Let's implement tearing by mouse cutting
+                     }
+                 }
+            }
+        }
+
+        class Constraint {
+            constructor(p1, p2) {
+                this.p1 = p1;
+                this.p2 = p2;
+                this.length = spacing;
+            }
+
+            update() {
+                const dx = this.p2.x - this.p1.x;
+                const dy = this.p2.y - this.p1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Tear if stretched too far
+                if (dist > tearDist) {
+                    this.broken = true;
+                    return;
+                }
+
+                const diff = (this.length - dist) / dist;
+                const offsetX = dx * diff * 0.5;
+                const offsetY = dy * diff * 0.5;
+
+                if (!this.p1.pinned) {
+                    this.p1.x -= offsetX;
+                    this.p1.y -= offsetY;
+                }
+                if (!this.p2.pinned) {
+                    this.p2.x += offsetX;
+                    this.p2.y += offsetY;
+                }
+            }
+
+            draw() {
+                if (this.broken) return;
+                ctx.beginPath();
+                ctx.moveTo(this.p1.x, this.p1.y);
+                ctx.lineTo(this.p2.x, this.p2.y);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${1 - (Math.abs(this.length - Math.hypot(this.p1.x - this.p2.x, this.p1.y - this.p2.y)) / 20)})`; // Stress color
+                ctx.stroke();
+            }
+        }
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            // Grid of points
+            const cols = Math.floor(width / spacing) - 2;
+            const rows = Math.floor(height / spacing / 2);
+            
+            const startX = (width - cols * spacing) / 2;
+            const startY = 50;
+
+            points.length = 0;
+            constraints.length = 0;
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const px = startX + x * spacing;
+                    const py = startY + y * spacing;
+                    // Pin top row
+                    const p = new Point(px, py, y === 0 && x % 5 === 0); 
+                    points.push(p);
+
+                    if (x > 0) {
+                        constraints.push(new Constraint(points[points.length - 2], p));
+                    }
+                    if (y > 0) {
+                        constraints.push(new Constraint(points[points.length - cols - 1], p));
+                    }
+                }
+            }
+        }
+
+        function update() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Update Points
+            for (let i = 0; i < points.length; i++) {
+                points[i].update();
+                points[i].constrain();
+            }
+
+            // Update Constraints (Iterate for stability)
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < constraints.length; j++) {
+                    if (!constraints[j].broken) {
+                        constraints[j].update();
+                    }
+                }
+            }
+            
+            // Mouse Cutting
+            if (isMouseDown) {
+                // Check constraints near mouse and break them
+                for (let j = 0; j < constraints.length; j++) {
+                    if (constraints[j].broken) continue;
+                    const c = constraints[j];
+                    // Dist from point to line segment approx
+                    // Simple check: check mid point
+                    const mx = (c.p1.x + c.p2.x) / 2;
+                    const my = (c.p1.y + c.p2.y) / 2;
+                    const d = Math.hypot(mx - mouseX, my - mouseY);
+                    if (d < 10) {
+                        c.broken = true;
+                    }
+                }
+            }
+
+            // Draw Constraints
+            ctx.lineWidth = 1;
+            for (let i = 0; i < constraints.length; i++) {
+                constraints[i].draw();
+            }
+
+            requestAnimationFrame(update);
+        }
+        
+        window.addEventListener('resize', init);
+        window.addEventListener('mousedown', () => isMouseDown = true);
+        window.addEventListener('mouseup', () => isMouseDown = false);
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        window.addEventListener('touchmove', e => {
+             e.preventDefault();
+             mouseX = e.touches[0].clientX;
+             mouseY = e.touches[0].clientY;
+             isMouseDown = true;
+        }, {passive: false});
+        window.addEventListener('touchend', () => isMouseDown = false);
+
+        init();
+        update();
+
+    </script>
+</body>
+</html>
