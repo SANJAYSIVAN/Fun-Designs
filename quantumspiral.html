@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Spiral</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            color: #ffaa00;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            pointer-events: none;
+            mix-blend-mode: screen;
+            border-left: 2px solid #ffaa00;
+            padding-left: 10px;
+            background: rgba(10, 5, 0, 0.8);
+        }
+        .label {
+            font-weight: 700;
+            font-size: 20px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui">
+        <div class="label">Quantum Spiral</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let time = 0;
+        let particles = 2000;
+        
+        let mouseX = 0;
+        let mouseY = 0;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2;
+            mouseY = height / 2;
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        // Touch support
+        window.addEventListener('touchmove', e => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        resize();
+
+        function draw() {
+            // Trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.globalCompositeOperation = 'lighter';
+
+            time += 0.005;
+
+            // Mathematical Constants
+            // Base Golden Angle in radians: 137.508 degrees
+            const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5)); 
+            
+            // Interaction: Deviate from the golden angle based on mouse X
+            // Center = Perfect Golden Angle
+            // Edges = Distortion
+            let deviation = (mouseX / width - 0.5) * 0.1;
+            let currentAngle = GOLDEN_ANGLE + deviation + Math.sin(time * 0.5) * 0.002;
+
+            // Zoom/Spread based on mouse Y
+            let spread = 4 + (mouseY / height) * 8;
+
+            const cx = width / 2;
+            const cy = height / 2;
+
+            for (let i = 0; i < particles; i++) {
+                // Phyllotaxis Formula:
+                // angle = n * 137.5 deg
+                // r = c * sqrt(n)
+                
+                let r = spread * Math.sqrt(i);
+                let theta = i * currentAngle;
+                
+                // Add a spiral twist over time
+                theta += time * 2.0 - (r * 0.02);
+
+                let x = cx + r * Math.cos(theta);
+                let y = cy + r * Math.sin(theta);
+
+                // Styling
+                // Size grows with radius
+                let size = 1.5 + (i / particles) * 4;
+                
+                // Color palette: Fire to Ice
+                // Center = Hot White/Yellow, Edge = Deep Purple/Blue
+                let hue = (i * 0.2 + time * 50) % 360;
+                let sat = 80;
+                let light = 60;
+                
+                // Modify color based on radius
+                // Close to center = hotter
+                if (i < 200) {
+                     hue = 40; 
+                     light = 90;
+                     size = 2;
+                }
+                
+                ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
