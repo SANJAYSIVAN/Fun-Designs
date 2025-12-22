@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinetic Type</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #e6e6e6;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            color: #111;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            pointer-events: none;
+        }
+        .label {
+            font-weight: 900;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: -1px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui">
+        <div class="label">Kinetic Type</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let bodies = [];
+        const GRAVITY = 0.5;
+        const FRICTION = 0.8; // Air resistance
+        const BOUNCE = 0.6;   // Restitution
+        
+        // Word bank to spawn
+        const WORDS = ["HEAVY", "WEIGHT", "FALL", "CRASH", "TYPE", "BOLD", "INK", "DROP", "STACK", "PHYSICS"];
+        
+        let mouseX = -1000;
+        let mouseY = -1000;
+        let prevMouseX = -1000;
+        let prevMouseY = -1000;
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        class Body {
+            constructor(x, y, char, fontSize) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = 0;
+                this.char = char;
+                this.fontSize = fontSize;
+                this.width = fontSize * 0.7; // Approx width
+                this.height = fontSize * 0.8; // Approx height
+                this.color = '#111';
+                this.angle = 0;
+                this.vAngle = (Math.random() - 0.5) * 0.2;
+                this.sleeping = false;
+            }
+
+            update() {
+                if (this.sleeping) return;
+
+                // Gravity
+                this.vy += GRAVITY;
+                this.vx *= 0.99; // Air drag
+
+                // Apply velocity
+                this.x += this.vx;
+                this.y += this.vy;
+                this.angle += this.vAngle;
+                this.vAngle *= 0.98; // Rotation drag
+
+                // Floor Collision
+                if (this.y + this.height/2 > height) {
+                    this.y = height - this.height/2;
+                    this.vy *= -BOUNCE;
+                    this.vx *= FRICTION; // Floor friction
+                    this.vAngle *= 0.8;
+                    
+                    // Stop if slow
+                    if (Math.abs(this.vy) < 1.0) this.vy = 0;
+                }
+
+                // Wall Collision
+                if (this.x - this.width/2 < 0) {
+                    this.x = this.width/2;
+                    this.vx *= -BOUNCE;
+                }
+                if (this.x + this.width/2 > width) {
+                    this.x = width - this.width/2;
+                    this.vx *= -BOUNCE;
+                }
+
+                // Mouse Interaction (Kick)
+                let dx = this.x - mouseX;
+                let dy = this.y - mouseY;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Mouse velocity
+                let mvx = mouseX - prevMouseX;
+                let mvy = mouseY - prevMouseY;
+                let mSpeed = Math.sqrt(mvx*mvx + mvy*mvy);
+
+                if (dist < 100 && mSpeed > 2) {
+                    let force = (150 - dist) / 150;
+                    this.vx += mvx * force * 0.5;
+                    this.vy += mvy * force * 0.5;
+                    this.vAngle += (Math.random() - 0.5) * force;
+                    this.sleeping = false;
+                }
+            }
+
+            resolve(other) {
+                // Simple Circle-Circle approximation for collision to keep code concise
+                // It's not perfect AABB but flows better for a "pile"
+                let dx = other.x - this.x;
+                let dy = other.y - this.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                let minDist = (this.width + other.width) * 0.45; // Overlap allowance
+
+                if (dist < minDist) {
+                    // Push apart
+                    let angle = Math.atan2(dy, dx);
+                    let tx = Math.cos(angle);
+                    let ty = Math.sin(angle);
+                    
+                    let overlap = minDist - dist;
+                    
+                    // Separate
+                    let sep = overlap * 0.5;
+                    this.x -= tx * sep;
+                    this.y -= ty * sep;
+                    other.x += tx * sep;
+                    other.y += ty * sep;
+                    
+                    // Exchange momentum (elastic)
+                    let v1 = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                    let v2 = Math.sqrt(other.vx*other.vx + other.vy*other.vy);
+                    
+                    // Transfer energy roughly
+                    this.vx -= tx * overlap * 0.1;
+                    this.vy -= ty * overlap * 0.1;
+                    other.vx += tx * overlap * 0.1;
+                    other.vy += ty * overlap * 0.1;
+                    
+                    // Rotational friction
+                    this.vAngle += (Math.random()-0.5) * 0.1;
+                    other.vAngle += (Math.random()-0.5) * 0.1;
+
+                    this.sleeping = false;
+                    other.sleeping = false;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                
+                ctx.fillStyle = this.color;
+                ctx.font = `900 ${this.fontSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.char, 0, 0);
+                
+                // Debug box
+                // ctx.strokeStyle = 'red';
+                // ctx.strokeRect(-this.width/2, -this.height/2, this.width, this.height);
+                
+                ctx.restore();
+            }
+        }
+
+        // --- SPAWNER ---
+        let spawnTimer = 0;
+        
+        function loop() {
+            // Background
+            ctx.fillStyle = '#e6e6e6';
+            ctx.fillRect(0, 0, width, height);
+
+            // Spawn words
+            spawnTimer++;
+            if (spawnTimer > 30 && bodies.length < 300) {
+                spawnTimer = 0;
+                let word = WORDS[Math.floor(Math.random() * WORDS.length)];
+                let startX = Math.random() * (width - 200) + 100;
+                let fontSize = Math.random() * 40 + 40;
+                
+                for(let i=0; i<word.length; i++) {
+                    let char = word[i];
+                    let b = new Body(startX + i * fontSize * 0.6, -50 - i*20, char, fontSize);
+                    bodies.push(b);
+                }
+            }
+
+            // Update Physics
+            // Sub-steps for stability
+            for (let s=0; s<2; s++) {
+                for (let i = 0; i < bodies.length; i++) {
+                    let b = bodies[i];
+                    b.update();
+                    
+                    // Check against others
+                    for (let j = i + 1; j < bodies.length; j++) {
+                        b.resolve(bodies[j]);
+                    }
+                }
+            }
+
+            // Draw
+            for (let b of bodies) {
+                b.draw();
+            }
+            
+            // Remove fallen off screen (bug safety)
+            bodies = bodies.filter(b => b.y < height + 100 && b.x > -100 && b.x < width + 100);
+
+            // Update Mouse tracking
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        window.addEventListener('touchmove', e => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, {passive: false});
+
+        resize();
+        loop();
+
+    </script>
+</body>
+</html>
