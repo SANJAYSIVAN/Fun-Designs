@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elastic Collision Synth</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        canvas {
+            display: block;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        #title {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #FFFFFF;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            pointer-events: none;
+            mix-blend-mode: difference;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">8. Elastic Collision Synth</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        /**
+         * Design 8: Elastic Collision Synth
+         * Logic: Perfectly Elastic 2D Collisions (Conservation of Momentum/Energy).
+         * Aesthetic: Visualizing impact energy as light and shockwaves.
+         */
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        const balls = [];
+        const shockwaves = [];
+        let draggedBall = null;
+
+        // Configuration
+        const config = {
+            ballCount: 25,
+            minRadius: 15,
+            maxRadius: 35,
+            speedLimit: 15,
+            friction: 0.998, // Very low air resistance
+            shockwaveSpeed: 3,
+            shockwaveLife: 30
+        };
+
+        const mouse = { x: 0, y: 0, px: 0, py: 0, down: false };
+
+        class Shockwave {
+            constructor(x, y, energy) {
+                this.x = x;
+                this.y = y;
+                this.radius = 1;
+                this.energy = Math.min(energy, 20); // Cap visual energy
+                this.life = config.shockwaveLife;
+                this.maxLife = config.shockwaveLife;
+            }
+
+            update() {
+                this.radius += config.shockwaveSpeed + (this.energy * 0.1);
+                this.life--;
+            }
+
+            draw() {
+                const alpha = this.life / this.maxLife;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 0, 51, ${alpha})`; // Neon Red
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        class Ball {
+            constructor(x, y, r) {
+                this.x = x;
+                this.y = y;
+                this.r = r;
+                this.mass = r * r; // Mass proportional to area
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.color = '#FFFFFF';
+            }
+
+            update() {
+                if (this === draggedBall) {
+                    this.x = mouse.x;
+                    this.y = mouse.y;
+                    this.vx = mouse.x - mouse.px;
+                    this.vy = mouse.y - mouse.py;
+                    return;
+                }
+
+                // Apply Friction
+                this.vx *= config.friction;
+                this.vy *= config.friction;
+
+                // Move
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wall Collisions
+                if (this.x - this.r < 0) {
+                    this.x = this.r;
+                    this.vx *= -1;
+                    this.triggerShockwave(Math.abs(this.vx));
+                } else if (this.x + this.r > width) {
+                    this.x = width - this.r;
+                    this.vx *= -1;
+                    this.triggerShockwave(Math.abs(this.vx));
+                }
+
+                if (this.y - this.r < 0) {
+                    this.y = this.r;
+                    this.vy *= -1;
+                    this.triggerShockwave(Math.abs(this.vy));
+                } else if (this.y + this.r > height) {
+                    this.y = height - this.r;
+                    this.vy *= -1;
+                    this.triggerShockwave(Math.abs(this.vy));
+                }
+            }
+
+            triggerShockwave(force) {
+                if (force > 2) {
+                    shockwaves.push(new Shockwave(this.x, this.y, force));
+                }
+            }
+
+            draw() {
+                const speed = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+                
+                // Visual Aesthetic:
+                // High Energy = White Core, Red Glow
+                // Low Energy = Dark Red Core, No Glow
+                
+                const energyRatio = Math.min(speed / 10, 1);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                
+                // Fill
+                if (energyRatio > 0.5) {
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.shadowColor = '#FF0033';
+                    ctx.shadowBlur = (energyRatio - 0.5) * 40;
+                } else {
+                    const redVal = Math.floor(50 + energyRatio * 200);
+                    ctx.fillStyle = `rgb(${redVal}, 0, ${Math.floor(redVal/5)})`;
+                    ctx.shadowBlur = 0;
+                }
+                
+                ctx.fill();
+                
+                // Stroke
+                ctx.strokeStyle = '#FF0033';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.shadowBlur = 0; // Reset
+            }
+        }
+
+        function resolveCollision(b1, b2) {
+            const dx = b2.x - b1.x;
+            const dy = b2.y - b1.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < b1.r + b2.r) {
+                // Overlap resolution (prevent sticking)
+                const angle = Math.atan2(dy, dx);
+                const targetDist = b1.r + b2.r;
+                const overlap = targetDist - dist;
+                
+                // Move apart proportional to inverse mass (lighter moves more)
+                const totalMass = b1.mass + b2.mass;
+                const m1Ratio = b2.mass / totalMass;
+                const m2Ratio = b1.mass / totalMass;
+
+                b1.x -= Math.cos(angle) * overlap * m1Ratio;
+                b1.y -= Math.sin(angle) * overlap * m1Ratio;
+                b2.x += Math.cos(angle) * overlap * m2Ratio;
+                b2.y += Math.sin(angle) * overlap * m2Ratio;
+
+                // Elastic Collision Physics
+                // Rotate velocities to collision axis
+                const sx = Math.cos(angle);
+                const sy = Math.sin(angle);
+
+                // Normal velocity components
+                const v1n = b1.vx * sx + b1.vy * sy;
+                const v2n = b2.vx * sx + b2.vy * sy;
+
+                // Tangential velocity components (unchanged)
+                const v1t = -b1.vx * sy + b1.vy * sx;
+                const v2t = -b2.vx * sy + b2.vy * sx;
+
+                // 1D Collision formulas for Normal components
+                const v1nFinal = (v1n * (b1.mass - b2.mass) + 2 * b2.mass * v2n) / totalMass;
+                const v2nFinal = (v2n * (b2.mass - b1.mass) + 2 * b1.mass * v1n) / totalMass;
+
+                // Rotate back
+                b1.vx = v1nFinal * sx - v1t * sy;
+                b1.vy = v1nFinal * sy + v1t * sx;
+                b2.vx = v2nFinal * sx - v2t * sy;
+                b2.vy = v2nFinal * sy + v2t * sx;
+
+                // Trigger Visuals
+                const impactEnergy = Math.abs(v1n - v2n);
+                const impactX = b1.x + (dx * b1.r / (b1.r + b2.r));
+                const impactY = b1.y + (dy * b1.r / (b1.r + b2.r));
+                
+                if (impactEnergy > 2) {
+                    shockwaves.push(new Shockwave(impactX, impactY, impactEnergy));
+                }
+            }
+        }
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            balls.length = 0;
+            
+            // Create non-overlapping balls
+            for (let i = 0; i < config.ballCount; i++) {
+                let r = config.minRadius + Math.random() * (config.maxRadius - config.minRadius);
+                let x, y, safe;
+                let attempts = 0;
+                
+                do {
+                    safe = true;
+                    x = r + Math.random() * (width - r * 2);
+                    y = r + Math.random() * (height - r * 2);
+                    
+                    for (let b of balls) {
+                        const d = Math.sqrt((x - b.x)**2 + (y - b.y)**2);
+                        if (d < r + b.r) {
+                            safe = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                } while (!safe && attempts < 100);
+
+                if (safe) {
+                    balls.push(new Ball(x, y, r));
+                }
+            }
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; // Trails
+            ctx.fillRect(0, 0, width, height);
+
+            // Update Balls
+            balls.forEach(b => b.update());
+
+            // Check Collisions (O(N^2) but N is small)
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    resolveCollision(balls[i], balls[j]);
+                }
+            }
+
+            // Draw Shockwaves
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                shockwaves[i].update();
+                shockwaves[i].draw();
+                if (shockwaves[i].life <= 0) {
+                    shockwaves.splice(i, 1);
+                }
+            }
+
+            // Draw Balls
+            balls.forEach(b => b.draw());
+
+            // Draw Connector Lines between near balls
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.beginPath();
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    const dx = balls[i].x - balls[j].x;
+                    const dy = balls[i].y - balls[j].y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < 150) {
+                        const alpha = (150 - dist) / 150;
+                        ctx.strokeStyle = `rgba(255, 0, 51, ${alpha * 0.4})`;
+                        ctx.moveTo(balls[i].x, balls[i].y);
+                        ctx.lineTo(balls[j].x, balls[j].y);
+                    }
+                }
+            }
+            ctx.stroke();
+            ctx.globalCompositeOperation = 'source-over';
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', init);
+        
+        // Interaction Logic
+        canvas.addEventListener('mousedown', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.down = true;
+            
+            // Check if clicked a ball
+            for (let b of balls) {
+                const dx = mouse.x - b.x;
+                const dy = mouse.y - b.y;
+                if (dx*dx + dy*dy < b.r * b.r) {
+                    draggedBall = b;
+                    // Stop velocity while holding
+                    b.vx = 0;
+                    b.vy = 0;
+                    break;
+                }
+            }
+        });
+
+        window.addEventListener('mousemove', e => {
+            mouse.px = mouse.x; // Previous position
+            mouse.py = mouse.y;
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('mouseup', () => {
+            mouse.down = false;
+            draggedBall = null;
+        });
+
+        init();
+        animate();
+
+    </script>
+</body>
+</html>
